@@ -1,75 +1,15 @@
-################################################################
-## signasel3s-v2.1.R:
-## Reprise plus propre de l'utilisation de i1 S1 i2 S2: les calculs de
-## proba et de matrice de recurrence se font en utilisant la frequence
-## p et la taille N uniquement. C'est au niveau du calcul de la
-## vraisemblance qu'on utilise i1 S1 etc. Permet de faire des choix
-## sur p=i1/S1 ou somme sur les p, etc., cf testne et slatkin...
-################################################################
-## signasel3s-v1.1.R: prise en compte explicite de S1 S2
-################################################################
-## PARADIGME:
-##### A REVOIR !! ###
-################################################################
-## i1 et i2 sont TOUJOURS relatifs a S1 et S2 n1 ne sert a rien mais
-## on le garde pour compatibilite et coherence, cf ci-dessous.
-## Les donnees sont de la forme:
-## For each sample (row) the columns are: g, i, S, N:
-## g1 i1 S1 N1
-## g2 i2 S2 N2
-## g3 i3 S3 N3
-## etc.
-## with g: generation, i: number of allele copies, S: sample size,
-## N: (effective) population size
-## De g1 a g2:
-## depart en g1 frequence p=i1/S1 puis binomiale B(N2,p) sauf en g2 ou
-## B(S2,p). On pourrait faire B(N2,p) en g2 puis tirer un echantillon
-## de taille S2 mais autant faire comme si la pop etait de taille S2
-## (ne change rien).
-## De g2 a g3:
-## depart en g2 frequence p=i2/S2 puis binomiale B(N3,p) etc.
-################################################################
-## TWO ALLELES ONLY
-## DIPLOID VERSION
-################################################################
-## Version 3:
-################################################################
-## Objectifs:
-## 1/ Information sur generations intermediaires
-## 2/ Combiner estimation Ne ET selection (sur =/= marqueurs)
-## 3/ Souplesse recursion a/ exacte b/ diffusion c/ simul
-################################################################
-## This program is aimed at detecting selection by computing the
-## likelihood of SNP allele frequencies.
-##
-## GENERAL NOTATIONS:
-##
-## '1' and '2' refer to the 'first' (initial) and 'last' (final)
-## populations, respectively, regardless of the number of generations
-## between them.
-## ng: total number of generations from population 1 to population 2.
-## So, ng = 1 if pop 2 is the direct offspring of pop 1. More generally,
-## ng = t2 - t1 if pop 1 lives at time t1 and pop 2 at time t2.
-## n1, n2: sizes of populations 1 and 2, resp. Warning: if ng > 1, the
-## size of population(s) at intermediate(s) generation(s) is n2, so:
-## generation 1: pop size n1->n2
-## generations 2 to (ng-1): pop size n2->n2
-## generation ng: pop size n2->S2 (if ng>1) or n1->S2 (if ng=1)
-## S1, S2: sizes of the samples taken from populations 1 and 2, resp.
-## NB: Computations are made as if the total size of population 2 was S2
-## (not n2). This is strictly equivalent to first considering n2
-## individuals then drawing S2 individuals among those n2, and obviously
-## saves time. Important: as a generalization S2 > n2 is allowed.
-## i1, i2: number of copies of the allele in samples S1 and S2, resp.
-## s: coefficient of selection, such that the fitnesses are 1, 1+s,
-## 1+2s for genotypes aa, aA, AA (in the case where A is the
-## positively selected allele)
-##
-## IMPORTANT: population sizes (n1, n2) and sample sizes (S1, S2) are
-## expressed in number of (diploid) individuals, so allele frequency
-## reads p = i / 2n
-##
-################################################################
+#include <cmath>
+#include <memory>
+#include <utility>
+
+#include <Rcpp.h>
+
+using namespace Rcpp;
+using namespace std;
+
+
+
+
 VecProb <- function(px, N, s) {
 ################################################################
     ## Gives the vector of probabilities of all possible allele
@@ -100,6 +40,8 @@ VecProb <- function(px, N, s) {
     prob <- dbinom(0:(2*N), 2*N, pxprime)
     return(prob)
 }
+
+
 ################################################################
 MatProb <- function(N, s, ng){
 ################################################################
@@ -124,6 +66,8 @@ MatProb <- function(N, s, ng){
     # print("Check!")
     return(mat)
 }
+
+
 ################################################################
 Like0 <- function(matp0, i1, S1, i2, S2, N, ng, s) {
 ################################################################
@@ -186,15 +130,7 @@ Like0 <- function(matp0, i1, S1, i2, S2, N, ng, s) {
     }
     return(L)
 }
-################################################################
 
-  ## ############################################################
-  ## enchainer les like = produit des like, mais avec le meme s!!
-  ## OK!
-  ## ############################################################
-
-## Big question: multimarqueurs: maximiser N par marqueur ou par intervalle de temps ??
-## depend si on cherche N ou s ??
 
 ################################################################
 WFLike2S <- function(s, data) {
@@ -225,11 +161,6 @@ WFLike2S <- function(s, data) {
 }
 ################################################################
 
-## ############################################################
-  ## ce n'est pas bon parce qu'on recalcule mat a chaque fois, il
-  ## faudrait le faire avant ??
-  ## ==> on verra plus tard, utiliser tel quel d'abord
-  ## ############################################################
 
 ################################################################
 WFMaxiLike2S <- function(data, maxs) {
@@ -260,6 +191,8 @@ WFMaxiLike2S <- function(data, maxs) {
   return(c(res$objective, res$maximum, warn))
 }
 ################################################################
+
+
 checkparam <- function(data) {
 ################################################################
   ## Data is assumed to have the format of a matrix with nrow=number
@@ -281,36 +214,44 @@ checkparam <- function(data) {
   stopifnot(all(i<=(2*S)))
 }
 ################################################################
-signaseltest <- function(data, maxs = 1) {
-################################################################
-  ## Compute the test statistics to detect selection
-  ## Data is a matrix with nrow = number of samples
-  ## For each sample (row) the columns are: g, i, S, N:
-  ## g1 i1 S1 N1
-  ## g2 i2 S2 N2
-  ## g3 i3 S3 N3
-  ## etc.
-  ## with g: generation, i: number of allele copies, S: sample size,
-  ## N: (effective) population size
-################################################################
-  ## verify parameter values
-  checkparam(data)
-  ## likelihood of the null (s=0)
-  L0 <- WFLike2S(s=0, data)
-  ## maximum likelihood for the alternative
-  x <- WFMaxiLike2S(data, maxs)
-  Lmax <- x[1]
-  smax <- x[2]
-  warn <- x[3]
-  ## likelihood ratio test
-  LRT <- -2 * log(L0 / Lmax)
-  ## pvalue assuming LRT follows Chi-square with 1 df
-  pvalue <- -log10(1 - pchisq(LRT, 1))
-  res <- matrix(c(L0, Lmax, smax, LRT, pvalue, warn), nrow=1)
-  colnames(res) <- c('L0', 'Lmax', 'smax', 'LRT', '-log10pvalue', 'warn')
-  rownames(res) <- ""
-  return(res)
+
+
+auto signseltest( IntegerMatrix const& data, maxs = 1 )
+{
+    /***************************************************************
+    Compute the test statistics to detect selection. 
+    Data is a matrix with as much rows as the number of samples. For each sample (row) the columns are:
+    g1 i1 S1 N1
+    g2 i2 S2 N2
+    g3 i3 S3 N3
+    etc.
+    with g: generation, i: number of allele copies, S: sample size, N: (effective) population size.
+    ***************************************************************/
+  
+    // Checking the parameter values.
+    checkparam( data );
+    
+    // Computing the likelihood of the null hypothesis (s=0).
+    auto L0 = WFLike2S( data, 0 );
+    
+    // Computing the maximum likelihood (?): what is maximised?
+    auto x = WFMaxiLike2S(data, maxs);
+    auto Lmax = x[1];
+    auto smax = x[2];
+    auto warn = x[3];
+    
+    // Computing the likelihood ratio.
+    auto LRT = -2 * log(L0 / Lmax);
+    
+    // Computing p-value assuming LRT follows a Chi-square low with 1 df.
+    auto pvalue = -log10(1 - pchisq(LRT, 1)); /// TODO: pchisq
+    auto res = NumericMatrix(1,5);
+    res[0] = L0, res[1] = Lmax, res[2] = smax, res[3] = LRT, res[4] = pvalue, res[5] = warn;
+    colnames(res) = CharacterVector::create("L0", "Lmax", "smax", "LRT", "-log10pvalue", "warn");
+    // rownames(res) <- ""
+    
+    return res
 }
-################################################################
+//////////////////////////////////////////////////////////////////
 
 
