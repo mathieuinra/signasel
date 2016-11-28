@@ -1,6 +1,8 @@
 #include <cmath>
 #include <gsl/gsl_randist.h>
+#include <gsl/gsl_cdf.h>
 #include <memory>
+#include <numeric>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -10,6 +12,9 @@
 using namespace Rcpp;
 using namespace std;
 
+/****************************************************************
+    Matrix functions 
+****************************************************************/
 using matrix_type = vector< vector< double > >; // col then row!
 
 auto make_matrix( int nrow, int ncol )
@@ -35,6 +40,10 @@ matrix_type mult_matrix( matrix_type const& A, matrix_type const& B )
   return res;
 }
 
+
+/****************************************************************
+    Simulation functions
+****************************************************************/
 
 auto probability_vector( double px, int N, double s) 
 {
@@ -121,19 +130,20 @@ auto likelihood_impl( int i1, int S1, int i2, int S2, int N, int ng, double s )
     // Generating the recursion matrix.
     auto mat = MatProb(N, s, ng);
     
-    // Slatking stuffs.
-    probp0 <- matp0[,1] // ??
-    valp0 <- matp0[,2]  // ??
-    // normalization
-    probp0 <- probp0 / sum(probp0)
-    stopifnot(sum(probp0) == 1)
+    // Defining the prior of i1* (true value of i1), two vectors of:
+    // - values of i1*.
+    // - its probability.
+    auto val_i1  = vector<int>(N+1-i1);
+    iota( val_i1.begin(), val_i1.end(), i1 );
+    
+    auto prob_i1 = vector<double>( val_i1.size(), 1./val_i1.size() ); 
         
     // Declaring miscellaneous variables.
     auto L = 0.;
     
-    for (kp0 in seq_along(probp0)) 
+    for( auto i = size_t{0}, end = prob_i1.size(); i < end; ++i )
     {
-        auto p0 = valp0[kp0]
+        auto p0 =  double(val_i1[i])/2/N;
         
         // probability of sampling at t1
         auto ps1 = gsl_ran_binom_pdf( i1, 2*S1, p0 );
@@ -144,14 +154,14 @@ auto likelihood_impl( int i1, int S1, int i2, int S2, int N, int ng, double s )
         // v1[i0+1] <- 1 ## i+1 here because i is in 0:(2n) but the first
         //              ## element of a vector is 1 in R
         // v2 <- mat %*% v1
-        auto v2 = mat[size_t(p0*2*N)];
+        auto v2 = mat[val_i1[i]];
         
         // probability of sampling at t2
         auto ps2 = 0.;
         for( auto k = 0, end = 2*N+1; k < end; ++k )
             ps2 += gsl_ran_binom_pdf( i2, 2*S2, v2[k] );
         
-        L += probp0[kp0] * ps1 * ps2
+        L += prob_i1[i1] * ps1 * ps2
     }
     
     return L;
@@ -279,7 +289,7 @@ auto signseltest( IntegerMatrix const& data )
     auto LRT = -2 * log(L0 / Lmax);
     
     // Computing p-value assuming LRT follows a Chi-square low with 1 df.
-    auto pvalue = -log10(1 - pchisq(LRT, 1)); /// TODO: pchisq
+    auto pvalue = -log10( 1 - gsl_cdf_chisq_P(LRT, 1) ); 
     auto res = NumericMatrix(1,5);
     res[0] = L0, res[1] = Lmax, res[2] = smax, res[3] = LRT, res[4] = pvalue;
     colnames(res) = CharacterVector::create("L0", "Lmax", "smax", "LRT", "-log10pvalue");
