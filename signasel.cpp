@@ -95,11 +95,13 @@ auto probability_matrix( int N, double s, int ng )
     
     // Making the (2N+1)*(2N+1) recursion matrix from one generation to the
     // next (pop size is always N)
-    auto res = make_matrix(2*N+1, 2*N+1);
+    auto mat = make_matrix(2*N+1, 2*N+1);
     
     auto k = 0;
-    for( auto& vec: res )
-        vec = probability_vector( double{k++}/2/N, N, s );
+    for( auto& vec: mat )
+        vec = probability_vector( double(k++)/2/N, N, s );
+    
+    auto res = mat;
     
     // Iterating the matrix over generations
     for( auto g = 1; g < ng; ++g )
@@ -128,7 +130,7 @@ auto likelihood_impl( int i1, int S1, int i2, int S2, int N, int ng, double s )
     ***********************************************************/
     
     // Generating the recursion matrix.
-    auto mat = MatProb(N, s, ng);
+    auto mat = probability_matrix(N, s, ng);
     
     // Defining the prior of i1* (true value of i1), two vectors of:
     // - values of i1*.
@@ -146,7 +148,7 @@ auto likelihood_impl( int i1, int S1, int i2, int S2, int N, int ng, double s )
         auto p0 =  double(val_i1[i])/2/N;
         
         // probability of sampling at t1
-        auto ps1 = gsl_ran_binom_pdf( i1, 2*S1, p0 );
+        auto ps1 = gsl_ran_binomial_pdf( i1, 2*S1, p0 );
         
         // probability pop at t1 (N) -> pop at t2 (N) (vector)
         // v1 <- rep(0, 2*N+1)
@@ -159,9 +161,9 @@ auto likelihood_impl( int i1, int S1, int i2, int S2, int N, int ng, double s )
         // probability of sampling at t2
         auto ps2 = 0.;
         for( auto k = 0, end = 2*N+1; k < end; ++k )
-            ps2 += gsl_ran_binom_pdf( i2, 2*S2, v2[k] );
+            ps2 += gsl_ran_binomial_pdf( i2, 2*S2, v2[k] );
         
-        L += prob_i1[i1] * ps1 * ps2
+        L += prob_i1[i1] * ps1 * ps2;
     }
     
     return L;
@@ -190,14 +192,13 @@ auto likelihood( IntegerMatrix const& data, double s )
     // Getting the data.
     auto g = data.column(0);
     auto i = data.column(1);
-    auto S = data.column(3);
-    auto n = data.column(4);
+    auto S = data.column(2);
+    auto N = data.column(3);
     
     auto p2 = 1.;
     
     for(auto k = 0, end = data.rows()-1; k < end; ++k )
         p2 *= likelihood_impl( i[k], S[k], i[k+1], S[k+1], N[k+1], g[k+1]-g[k], s );
-  }
   
   return p2;
 }
@@ -227,7 +228,7 @@ auto maximised_likelihood_s( IntegerMatrix const& data )
         }
     }
     
-  return {smax, Lmax};
+  return make_pair(smax, Lmax);
 }
 
 
@@ -248,8 +249,8 @@ auto checkparam( IntegerMatrix const& data )
     // Getting the data.
     auto g = data.column(0);
     auto i = data.column(1);
-    auto S = data.column(3);
-    auto n = data.column(4);
+    auto S = data.column(2);
+    auto n = data.column(3);
     
     // Checking the data.
     for( auto k = 0, end = data.rows(); k < end; ++k )
@@ -261,7 +262,7 @@ auto checkparam( IntegerMatrix const& data )
 }
 
 
-auto signseltest( IntegerMatrix const& data )
+auto signaseltest( IntegerMatrix const& data )
     -> NumericMatrix
 {
     /***************************************************************
@@ -282,8 +283,8 @@ auto signseltest( IntegerMatrix const& data )
     
     // Computing the maximum likelihood value of s.
     auto x = maximised_likelihood_s( data );
-    auto Lmax = x[0];
-    auto smax = x[1];
+    auto smax = x.first;
+    auto Lmax = x.second;
     
     // Computing the likelihood ratio.
     auto LRT = -2 * log(L0 / Lmax);
@@ -295,7 +296,7 @@ auto signseltest( IntegerMatrix const& data )
     colnames(res) = CharacterVector::create("L0", "Lmax", "smax", "LRT", "-log10pvalue");
     // rownames(res) <- ""
     
-    return res
+    return res;
 }
 //////////////////////////////////////////////////////////////////
 
