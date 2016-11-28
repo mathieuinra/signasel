@@ -124,7 +124,7 @@ auto likelihood_impl( int i1, int S1, int i2, int S2, int N, int ng, double s )
     // Slatking stuffs.
     probp0 <- matp0[,1] // ??
     valp0 <- matp0[,2]  // ??
-    ## normalization
+    // normalization
     probp0 <- probp0 / sum(probp0)
     stopifnot(sum(probp0) == 1)
         
@@ -193,35 +193,32 @@ auto likelihood( IntegerMatrix const& data, double s )
 }
 
 
-################################################################
-WFMaxiLike2S <- function(data, maxs) {
-################################################################
-  ## Finds the maximum likelihood on s, returns L(smax), smax
-  ## Uses the 'optimize' function of R
-  ## WARNING: this function does not find the max in some
-  ## cases. Must be checked
-  ##
-  ## IMPORTANT: maxs gives min and max possible values for s 
-  ## must be realistic (??)  
-################################################################
-  res <- optimize(WFLike2S, interval=c(-maxs, maxs), 
-                  data,
-                  maximum = TRUE)
-  warn <- 0
-  ## Issue warning message if maxs is reached
-  if ((res$maximum - maxs)**2 < 1e-6) {
-    print(paste("Warning: Maximum value smax = ", maxs,
-                  " was reached."))
-    warn <- 1
-    ## it would be possible to launch something here (exhaustive search?)
-    ## however i doubt it improves, because likelihood is continuous
-    ## and has a single maximum (this must be checked!) hence we are
-    ## at the extreme s value. Still it is BAD (unrealistic?)
-    ## return value 
-  }
-  return(c(res$objective, res$maximum, warn))
+auto maximised_likelihood_s( IntegerMatrix const& data ) 
+{
+    /**********************************************************
+    Finds the maximum likelihood on s. Returns L(smax) and smax.
+    
+    Using an easy grid computation for maximum searching.
+    **********************************************************/
+    
+    // Declaring variables.
+    auto step = 0.01;
+    auto smax = 0;
+    auto Lmax = likelihood( data, 0 );
+    
+    // Searching the maximum likelihood of s.
+    for( auto i = size_t{1}, end = size_t(1/step)+1; i < end; ++i )
+    {
+        auto Ltmp = likelihood(data, i*step);
+        if( Lmax < Ltmp )
+        {
+            smax = i*step;
+            Lmax = Ltmp;
+        }
+    }
+    
+  return {smax, Lmax};
 }
-################################################################
 
 
 auto checkparam( IntegerMatrix const& data )
@@ -254,7 +251,7 @@ auto checkparam( IntegerMatrix const& data )
 }
 
 
-auto signseltest( IntegerMatrix const& data, maxs = 1 )
+auto signseltest( IntegerMatrix const& data )
     -> NumericMatrix
 {
     /***************************************************************
@@ -271,13 +268,12 @@ auto signseltest( IntegerMatrix const& data, maxs = 1 )
     checkparam( data );
     
     // Computing the likelihood of the null hypothesis (s=0).
-    auto L0 = WFLike2S( data, 0 );
+    auto L0 = likelihood( data, 0 );
     
-    // Computing the maximum likelihood (?): what is maximised?
-    auto x = WFMaxiLike2S(data, maxs);
-    auto Lmax = x[1];
-    auto smax = x[2];
-    auto warn = x[3];
+    // Computing the maximum likelihood value of s.
+    auto x = maximised_likelihood_s( data );
+    auto Lmax = x[0];
+    auto smax = x[1];
     
     // Computing the likelihood ratio.
     auto LRT = -2 * log(L0 / Lmax);
@@ -285,8 +281,8 @@ auto signseltest( IntegerMatrix const& data, maxs = 1 )
     // Computing p-value assuming LRT follows a Chi-square low with 1 df.
     auto pvalue = -log10(1 - pchisq(LRT, 1)); /// TODO: pchisq
     auto res = NumericMatrix(1,5);
-    res[0] = L0, res[1] = Lmax, res[2] = smax, res[3] = LRT, res[4] = pvalue, res[5] = warn;
-    colnames(res) = CharacterVector::create("L0", "Lmax", "smax", "LRT", "-log10pvalue", "warn");
+    res[0] = L0, res[1] = Lmax, res[2] = smax, res[3] = LRT, res[4] = pvalue;
+    colnames(res) = CharacterVector::create("L0", "Lmax", "smax", "LRT", "-log10pvalue");
     // rownames(res) <- ""
     
     return res
