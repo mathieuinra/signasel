@@ -33,7 +33,7 @@ matrix_type mult_matrix( matrix_type const& A, matrix_type const& B )
     {
       auto& tmp = res[i][j];
       
-      for( auto k = 0ul, endk = res[0].size(); k < endk; ++k )
+      for( auto k = size_t{0}, endk = res[0].size(); k < endk; ++k )
         tmp += A[k][j] * B[i][k];
     }
   
@@ -56,7 +56,7 @@ auto probability_vector( double px, int N, double s)
     the matrix.
     
     px: allele frequency at generations t.
-    N: population sizes at generations (t+1)
+    N: population size at generations (t+1)
     s: coefficient of selection
     ***********************************************************/
     
@@ -78,7 +78,7 @@ auto probability_vector( double px, int N, double s)
     auto col = vector<double>(nn2);
     
     for( auto i = size_t{0}; i < nn2 ; ++i )
-        col[i] = gsl_ran_binomial_pdf( i, pxprime, nn2 );
+        col[i] = gsl_ran_binomial_pdf( i, pxprime, 2*N );
     
     return col;
 }
@@ -107,7 +107,7 @@ auto probability_matrix( int N, double s, int ng )
     for( auto g = 1; g < ng; ++g )
         res = mult_matrix( res, mat );
         
-    return mat;
+    return res;
 }
 
 
@@ -148,22 +148,17 @@ auto likelihood_impl( int i1, int S1, int i2, int S2, int N, int ng, double s )
         auto p0 =  double(val_i1[i])/2/N;
         
         // probability of sampling at t1
-        auto ps1 = gsl_ran_binomial_pdf( i1, 2*S1, p0 );
+        auto ps1 = gsl_ran_binomial_pdf( i1, p0, 2*S1 );
         
         // probability pop at t1 (N) -> pop at t2 (N) (vector)
-        // v1 <- rep(0, 2*N+1)
-        // i0 <- round(p0 * 2 * N)
-        // v1[i0+1] <- 1 ## i+1 here because i is in 0:(2n) but the first
-        //              ## element of a vector is 1 in R
-        // v2 <- mat %*% v1
         auto v2 = mat[val_i1[i]];
         
         // probability of sampling at t2
         auto ps2 = 0.;
-        for( auto k = 0, end = 2*N+1; k < end; ++k )
-            ps2 += gsl_ran_binomial_pdf( i2, 2*S2, v2[k] );
+        for( auto k = i2, end = 2*N+1; k < end; ++k )
+            ps2 += gsl_ran_binomial_pdf( i2, v2[k], 2*S2 );
         
-        L += prob_i1[i1] * ps1 * ps2;
+        L += prob_i1[i] * ps1 * ps2;
     }
     
     return L;
@@ -200,7 +195,7 @@ auto likelihood( IntegerMatrix const& data, double s )
     for(auto k = 0, end = data.rows()-1; k < end; ++k )
         p2 *= likelihood_impl( i[k], S[k], i[k+1], S[k+1], N[k+1], g[k+1]-g[k], s );
   
-  return p2;
+    return p2;
 }
 
 
@@ -214,7 +209,7 @@ auto maximised_likelihood_s( IntegerMatrix const& data )
     
     // Declaring variables.
     auto step = 0.01;
-    auto smax = 0;
+    auto smax = 0.;
     auto Lmax = likelihood( data, 0 );
     
     // Searching the maximum likelihood of s.
@@ -228,7 +223,7 @@ auto maximised_likelihood_s( IntegerMatrix const& data )
         }
     }
     
-  return make_pair(smax, Lmax);
+    return make_pair(smax, Lmax);
 }
 
 
