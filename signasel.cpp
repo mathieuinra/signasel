@@ -253,8 +253,8 @@ auto checkparam( IntegerMatrix const& data )
 }
 
 
-auto estimate_s( IntegerMatrix const& data )
-    -> NumericMatrix
+//[[Rcpp::export]]
+NumericMatrix estimate_s( IntegerMatrix const& data )
 {
     /***************************************************************
     Compute the test statistics to detect selection. 
@@ -291,8 +291,8 @@ auto estimate_s( IntegerMatrix const& data )
 }
 
 
-auto estimate_Ne( IntegerMatrix const& data )
-    -> int
+//[[Rcpp::export]]
+NumericMatrix estimate_Ne( IntegerMatrix const& data )
 {
     /***************************************************************
     Compute the test statistics to detect selection. 
@@ -308,9 +308,15 @@ auto estimate_Ne( IntegerMatrix const& data )
     checkparam( data );
     
     // Computing the likelihood of the null hypothesis (s=0).
-    auto res = max_like_Ne( data, 0 );
+    auto x = max_like_Ne( data, 0 );
+    
+    auto res = NumericMatrix(1,2);
+    res[0] = x.value, res[1] = x.likelihood;
+    colnames(res) = CharacterVector::create("Ne", "Lmax" );
+    rownames(res) = CharacterVector::create( "" );
     
     return res;
 }
+
 
 
