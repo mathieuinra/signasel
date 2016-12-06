@@ -12,7 +12,7 @@ struct like
     
 
 template < typename F, typename T >
-auto max_f( F f, T min, T max )
+auto max_f( F f, T min, T max, int max_counter = 1000 )
   -> like<T>
 {
     // Declaring variables.
@@ -24,7 +24,9 @@ auto max_f( F f, T min, T max )
     auto c = b - (b - a) / gr;
     auto d = a + (b - a) / gr;
     
-    while( std::abs(c - d) > tol )
+    auto counter = -1;
+    
+    while( std::abs(c - d) > tol && ++counter < max_counter )
     {
       if( f(c) > f(d) )
         b = d;
