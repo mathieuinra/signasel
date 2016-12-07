@@ -39,3 +39,29 @@ auto max_f( F f, T min, T max, int max_counter = 1000 )
         
     return {(b + a) / 2, f((b + a) / 2)};
 }
+
+
+template < typename F >
+auto max_f( F f, size_t min, size_t max )
+  -> like<size_t>
+{
+    auto val = f(min);
+    auto x = min;
+    
+    while( ++min < max )
+    {
+      auto tmp = f(min);
+      if( tmp > val )
+      {
+        val = tmp;
+        x = min;
+      }
+    }
+    
+    return {x, val};
+    
+}
+
+
+
+
