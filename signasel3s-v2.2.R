@@ -1,3 +1,23 @@
+####################
+DO NOT USE THIS FILE, IT IS ERROR PRONE
+####################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ################################################################
 ## signasel3s-v2.1.R:
 ## Reprise plus propre de l'utilisation de i1 S1 i2 S2: les calculs de
