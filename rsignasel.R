@@ -101,7 +101,7 @@ data = matrix(NA,ncol = 3, nrow = 2)
 data[1,] = c(t1,i1,S1)
 data[2,] = c(t2,i2,S2)
     
-likelihood(data,N,s)
+likelihood(data,Ne,s)
 # print 0.002341363
 
 
