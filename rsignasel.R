@@ -38,9 +38,9 @@ impl.likelihood = function( p0, i1, S1, i2, S2, N, ng, s, ps1.replacement = T, p
     # probability of sampling at t1
     if(ps1.replacement)
     {
-      ps1 = p0[k1] * dbinom( i1, 2*S1, k1/2/N ) # with replacement
+      ps1 = p0[k1+1] * dbinom( i1, 2*S1, k1/2/N ) # with replacement
     } else
-      ps1 = p0[k1] * dhyper( i1, k1, 2*N-k1, 2*S1 ) # without replacement
+      ps1 = p0[k1+1] * dhyper( i1, k1, 2*N-k1, 2*S1 ) # without replacement
       
       
     # probability of sampling at t2
@@ -89,26 +89,19 @@ Ne = 10
 S1 = Ne
 S2 = Ne
 
-t1 = 1
-t2 = 10
-
-i1.true = 5
-s = 0.1
-
-i.tmp = i1.true
-
-for( i in 1:(t2-t1) )
-  i.tmp = rbinom(1, 2*Ne, i.tmp/2/Ne)
-
-i1 = rhyper(1, i1.true, 2*Ne-i1.true, 2*S1)
-i2 = rhyper(1, i.tmp, 2*Ne-i.tmp, 2*S2)
-
-data = matrix(c(t1,t2,i1,i2,S1,S2),ncol=3)
-
-like = sapply( 10:20, function(x) likelihood(data,x,0) )
-plot(like)
-
-
-
+t1 = 0
+t2 = 2
+    
+i1 = 10
+i2 = 10
+    
+s = 0
+    
+data = matrix(NA,ncol = 3, nrow = 2)
+data[1,] = c(t1,i1,S1)
+data[2,] = c(t2,i2,S2)
+    
+likelihood(data,N,s)
+# print 0.002341363
 
 
