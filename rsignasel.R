@@ -102,6 +102,7 @@ data[1,] = c(t1,i1,S1)
 data[2,] = c(t2,i2,S2)
     
 likelihood(data,Ne,s)
-# print 0.002341363
+# [1] 0.00390656
+
 
 
