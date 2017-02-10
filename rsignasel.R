@@ -3,7 +3,8 @@ pij = function( i, px, N, s )
 {
   pxprime = px * ( s*(px+1) + 1 )/( 2*s*px + 1 )
   return( dbinom( i, 2*N, pxprime ) )
-}
+} 
+#comment
 
 
 probability.matrix = function( N, s, ng )
