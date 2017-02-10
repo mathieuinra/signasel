@@ -19,8 +19,8 @@ echo -e "PKG_CXXFLAGS=-I/usr/include/ --std=c++1z -static\nPKG_LIBS=$gsl" > Make
 cp max_f.hpp signasel.cpp Makevars signasel/src/
 
 # Compiling 
-R -e "library(Rcpp);compileAttributes(\"signasel\")"
-R -e "library(devtools);install(\"signasel\")"
+R -e "library(Rcpp);compileAttributes(\"signasel\")" &>> log
+R -e "library(devtools);install(\"signasel\")" &>> log
 
 
 
