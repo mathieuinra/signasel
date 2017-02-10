@@ -13,15 +13,16 @@ probability.matrix = function( N, s, ng )
   ## Assigning probability values.
   for( i in 1:nrow(mat) )
     for( j in 1:ncol(mat) )
-      mat[i,j] = pij( i-1, 1.*(j-1)/2/N, N, s )
+    {
+      px = (j-1)/2/N
+      mat[i,j] = dbinom( i-1, 2*N, px * ( s*(px+1) + 1 )/( 2*s*px + 1 ) )
+    }
   
-  ## Matrix multiplication ~ res = mat^(ng-1)
+  ## Matrix multiplication ~ res = mat^ng
   res = mat
   if( ng >= 2 )
-  {
     for( g in 2:ng )
       res = res %*% mat
-  }
     
   return(res)
 }
