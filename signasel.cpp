@@ -1,9 +1,11 @@
 #include <cmath>
+#include <functional>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_cdf.h>
 #include <memory>
 #include <numeric>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -19,7 +21,7 @@ namespace impl
 { // namespace impl
 
     /****************************************************************
-        Matrix
+        Matrix functions 
     ****************************************************************/
     
     template < typename T >
@@ -79,8 +81,27 @@ namespace impl
       
       auto nrow() const { return _n_row; }
       auto ncol() const { return _n_col; }
+      
+      auto operator[]( size_t i ) const -> T { return _data[i]; }
+      auto operator[]( size_t i ) -> T& { return _data[i]; }
+      
+      auto size() const { return _n_col*_n_row; }
     };
     
+    
+    template < typename T >
+    auto operator<<( ostream& out, matrix<T> const& mat )
+      -> ostream&
+    {
+        for( auto i = size_t{0}; i < mat.nrow(); ++i )
+        {
+          for( auto j = size_t{0}; j < mat.ncol(); ++j )
+            out << mat(i,j) << " ";
+          out << endl;
+        }
+        
+        return out;
+    }
 
 
     /****************************************************************
@@ -122,7 +143,7 @@ namespace impl
     }
 
 
-    auto probability_matrix( size_t N, double s, int ng )
+    auto probability_matrix( int N, double s, int ng )
     {
         /***********************************************************
         Create the Wright-Fisher recursion matrix over ng generations
@@ -147,10 +168,30 @@ namespace impl
 
         return res;
     }
+    
+    
+    auto sampling_function( std::string const& opt )
+    {
+        auto res = std::function<double(size_t,size_t,size_t,size_t)>{};
+        
+        if( opt == "dbinom" )
+            res = []( size_t N, size_t i, size_t S, size_t k ) -> double
+            {
+            return gsl_ran_binomial_pdf( i, double(k)/2/N, 2*S);
+            };
+        else if( opt == "dhyper" )
+            res = []( size_t N, size_t i, size_t S, size_t k ) -> double
+            {
+            return gsl_ran_hypergeometric_pdf( i, k, 2*N-i, 2*S );
+            };
+        return res;
+    }
 
     
-    auto likelihood( size_t i1, size_t S1, size_t i2, size_t S2, 
-                     size_t N, size_t ng, double s )
+    auto likelihood( NumericVector const& p0,
+                     size_t i1, size_t S1, size_t i2, size_t S2, 
+                     size_t N, size_t ng, double s, 
+                     std::string const& ps1_fn, std::string const& ps2_fn )
         -> double
     {
         /***********************************************************
@@ -170,29 +211,25 @@ namespace impl
         // Generating the recursion matrix
         /// @dev: critically slow function.
         auto mat = probability_matrix(N, s, ng);
-
-        // Defining the prior of i1* (true value of i1) as a uniform prior.
-        auto prob_i1 = 1./(N+1-i1);
+          
+        // Sampling functions.
+        auto fn1 = sampling_function( ps1_fn );
+        auto fn2 = sampling_function( ps2_fn );
 
         // Declaring miscellaneous variables.
         auto L = 0.;
 
-        for( auto i = i1, end = 2*N+1; i < end; ++i )
+        for( auto k1 = size_t{0}, end = 2*N+1; k1 < end; ++k1 )
         {
-            auto p0 =  double(i)/2/N;
-
             // probability of sampling at t1
-            auto ps1 = gsl_ran_binomial_pdf( i1, p0, 2*S1 );
-
-            // // probability pop at t1 (N) -> pop at t2 (N) (vector)
-            // auto& v2 = mat[i];
-
+            auto ps1 = p0[k1] * fn1( N, i1, S1, k1 );
+            
             // probability of sampling at t2
             auto ps2 = 0.;
-            for( auto k = i2, end = 2*N+1; k < end; ++k )
-                ps2 += gsl_ran_binomial_pdf( i2, mat(k,i), 2*S2 );
-
-            L += prob_i1 * ps1 * ps2;
+            for( auto k2 = size_t{0}, end = 2*N+1; k2 < end; ++k2 )
+                ps2 += mat(k2,k1) * fn2( N, i2, S2, k2 );
+            
+            L += ps1 * ps2;
         }
 
         return L;
@@ -202,8 +239,13 @@ namespace impl
 
 
 
-auto likelihood( IntegerMatrix const& data, int N, double s ) 
-    -> double
+
+//[[Rcpp::export]]
+double likelihood( IntegerMatrix const& data, int N, double s,
+                   NumericVector p0 = NumericVector(), 
+                   std::string const& ps1_fn = "dbinom",
+                   std::string const& ps2_fn = "dbinom" ) 
+    //-> double
 {
     /***********************************************************
     Calculates the Likelihood for multiple time samples.
@@ -219,131 +261,142 @@ auto likelihood( IntegerMatrix const& data, int N, double s )
     g2 to g3, etc. and multiply the resulting probabilities. s is the
     same for all samples and is maximized over all generations.
     ***********************************************************/
+    if( p0.size() == 0 )
+      p0 = NumericVector(2*N+1, 1./(2*N+1));
+    
     
     auto p2 = 1.;
     
     for( auto k = 0, end = data.rows()-1; k < end; ++k )
-        p2 *= impl::likelihood( data(k,1),   // i1
+        p2 *= impl::likelihood( p0, 
+                                data(k,1),   // i1
                                 data(k,2),   // S1
                                 data(k+1,1), // i2
                                 data(k+1,2), // S2
                                 N, 
                                 data(k+1,0)-data(k,0), // t2-t1
-                                s );
+                                s,
+                                ps1_fn, ps2_fn );
   
     return p2;
 }
 
-
-auto max_like_s( IntegerMatrix const& data, int N ) 
-{
-    /**********************************************************
-    Finds the maximum likelihood on s. Returns L(smax) and smax.
-    
-    Using an easy grid computation for maximum searching.
-    **********************************************************/
-    using namespace std::placeholders;
-    return max_f( bind(likelihood, data, N, _1), 0., 1. );
-}
-
-
-auto max_like_Ne( IntegerMatrix const& data, 
-                  double s,
-                  size_t min = 2, size_t max = 100
-                  )
-{
-    using namespace std::placeholders;
-    return max_f( bind(likelihood, data, _1, s), min, max );
-}
-
-
-auto checkparam( IntegerMatrix const& data )
-    -> void
-{
-    /***********************************************************
-    Data is assumed to have the format of a matrix with nrow = 
-    number of samples and for each sample the columns: 
-    g1 i1 S1
-    g2 i2 S2
-    g3 i3 S3
-    etc.
-    with g: generation, i: number of allele copies, S: sample 
-    size.
-    ***********************************************************/
-       
-    // Checking the data.
-    for( auto k = 0, end = data.rows(); k < end; ++k )
-    {
-        if( data(k,0) <= 0 || data(k,2) <= 0 || /*n[k] <= 0 ||*/ 
-            data(k,1) < 0 || /*S[k] > n[k] ||*/ data(k,1) > 2*data(k,2) )
-            throw runtime_error( "unvalid parameters" );
-    }
-}
-
-
-//[[Rcpp::export]]
-NumericMatrix estimate_s( IntegerMatrix const& data, int N )
-{
-    /***************************************************************
-    Compute the test statistics to detect selection. 
-    Data is a matrix with as much rows as the number of samples. For each sample (row) the columns are:
-    g1 i1 S1
-    g2 i2 S2
-    g3 i3 S3
-    etc.
-    with g: generation, i: number of allele copies, S: sample size, N: (effective) population size.
-    ***************************************************************/
-  
-    // Checking the parameter values.
-    checkparam( data );
-    
-    // Computing the likelihood of the null hypothesis (s=0).
-    auto L0 = likelihood( data, N, 0 );
-    
-    // Computing the maximum likelihood value of s.
-    auto x = max_like_s( data, N );
-    auto smax = x.value;
-    auto Lmax = x.likelihood;
-    
-    // Computing the likelihood ratio.
-    auto LRT = -2 * log(L0 / Lmax);
-    
-    // Computing p-value assuming LRT follows a Chi-square low with 1 df.
-    auto pvalue = -log10( 1 - gsl_cdf_chisq_P(LRT, 1) ); 
-    auto res = NumericMatrix(1,5);
-    res[0] = L0, res[1] = Lmax, res[2] = smax, res[3] = LRT, res[4] = pvalue;
-    colnames(res) = CharacterVector::create("L0", "Lmax", "smax", "LRT", "-log10pvalue");
-    rownames(res) = CharacterVector::create( "" );
-    
-    return res;
-}
-
-
-//[[Rcpp::export]]
-NumericMatrix estimate_Ne( IntegerMatrix const& data )
-{
-    /***************************************************************
-    Compute the test statistics to detect selection. 
-    Data is a matrix with as much rows as the number of samples. For each sample (row) the columns are:
-    g1 i1 S1
-    g2 i2 S2
-    g3 i3 S3
-    etc.
-    with g: generation, i: number of allele copies, S: sample size, N: (effective) population size.
-    ***************************************************************/
-  
-    // Checking the parameter values.
-    checkparam( data );
- 
-    // Computing the likelihood of the null hypothesis (s=0).
-    auto x = max_like_Ne( data, 0 );
-    
-    auto res = NumericMatrix(1,2);
-    res[0] = x.value, res[1] = x.likelihood;
-    colnames(res) = CharacterVector::create("Ne", "Lmax" );
-    rownames(res) = CharacterVector::create( "" );
-    
-    return res;
-}
+// 
+// auto max_like_s( IntegerMatrix const& data, int N ) 
+// {
+//     /**********************************************************
+//     Finds the maximum likelihood on s. Returns L(smax) and smax.
+//     
+//     Using an easy grid computation for maximum searching.
+//     **********************************************************/
+//     using namespace std::placeholders;
+//     return max_f( bind(likelihood, data, N, _1), 0., 1. );
+// }
+// 
+// 
+// auto max_like_Ne( IntegerMatrix const& data, 
+//                   double s,
+//                   size_t min, size_t max
+//                   )
+// {
+//     using namespace std::placeholders;
+//     return max_f( bind(likelihood, data, _1, s), min, max );
+// }
+// 
+// 
+// auto checkparam( IntegerMatrix const& data )
+//     -> void
+// {
+//     /***********************************************************
+//     Data is assumed to have the format of a matrix with nrow = 
+//     number of samples and for each sample the columns: 
+//     g1 i1 S1
+//     g2 i2 S2
+//     g3 i3 S3
+//     etc.
+//     with g: generation, i: number of allele copies, S: sample 
+//     size.
+//     ***********************************************************/
+//     
+//     // // Getting the data.
+//     // auto g = data.column(0);
+//     // auto i = data.column(1);
+//     // auto S = data.column(2);
+//     
+//     // Checking the data.
+//     for( auto k = 0, end = data.rows(); k < end; ++k )
+//     {
+//       if( data(k,0) <= 0 || data(k,2) <= 0 || /*n[k] <= 0 ||*/ 
+//     data(k,1) < 0 || /*S[k] > n[k] ||*/ data(k,1) > 2*data(k,2) )
+//             throw runtime_error( "unvalid parameters" );
+//     }
+// }
+// 
+// 
+// //[[Rcpp::export]]
+// NumericMatrix estimate_s( IntegerMatrix const& data, int N )
+// {
+//     /***************************************************************
+//     Compute the test statistics to detect selection. 
+//     Data is a matrix with as much rows as the number of samples. For each sample (row) the columns are:
+//     g1 i1 S1
+//     g2 i2 S2
+//     g3 i3 S3
+//     etc.
+//     with g: generation, i: number of allele copies, S: sample size, N: (effective) population size.
+//     ***************************************************************/
+//   
+//     // Checking the parameter values.
+//     checkparam( data );
+//     
+//     // Computing the likelihood of the null hypothesis (s=0).
+//     auto L0 = likelihood( data, N, 0 );
+//     
+//     // Computing the maximum likelihood value of s.
+//     auto x = max_like_s( data, N );
+//     auto smax = x.value;
+//     auto Lmax = x.likelihood;
+//     
+//     // Computing the likelihood ratio.
+//     auto LRT = -2 * log(L0 / Lmax);
+//     
+//     // Computing p-value assuming LRT follows a Chi-square low with 1 df.
+//     auto pvalue = -log10( 1 - gsl_cdf_chisq_P(LRT, 1) ); 
+//     auto res = NumericMatrix(1,5);
+//     res[0] = L0, res[1] = Lmax, res[2] = smax, res[3] = LRT, res[4] = pvalue;
+//     colnames(res) = CharacterVector::create("L0", "Lmax", "smax", "LRT", "-log10pvalue");
+//     rownames(res) = CharacterVector::create( "" );
+//     
+//     return res;
+// }
+// 
+// 
+// //[[Rcpp::export]]
+// NumericMatrix estimate_Ne( IntegerMatrix const& data, size_t min = 2, size_t max = 50 )
+// {
+//     /***************************************************************
+//     Compute the test statistics to detect selection. 
+//     Data is a matrix with as much rows as the number of samples. For each sample (row) the columns are:
+//     g1 i1 S1
+//     g2 i2 S2
+//     g3 i3 S3
+//     etc.
+//     with g: generation, i: number of allele copies, S: sample size, N: (effective) population size.
+//     ***************************************************************/
+//   
+//     // Checking the parameter values.
+//     checkparam( data );
+//   
+//     std::cout << 51 << "\n";
+//     // Computing the likelihood of the null hypothesis (s=0).
+//     auto x = max_like_Ne( data, 0, min, max );
+//     
+//     auto res = NumericMatrix(1,2);
+//     res[0] = x.value, res[1] = x.likelihood;
+//     colnames(res) = CharacterVector::create("Ne", "Lmax" );
+//     rownames(res) = CharacterVector::create( "" );
+//     
+//     return res;
+// }
 
 
