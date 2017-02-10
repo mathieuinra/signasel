@@ -15,7 +15,7 @@ fi
 
 # Creating the package
 R -e "library(Rcpp);Rcpp.package.skeleton(\"signasel\", example_code = F)" &> log
-echo -e "PKG_CXXFLAGS=-I/usr/include/ --std=c++1z -static\nPKG_LIBS=$gsl" > Makevars
+echo -e "PKG_CXXFLAGS=-I/usr/include/ --std=c++1y -static\nPKG_LIBS=$gsl" > Makevars
 cp max_f.hpp signasel.cpp Makevars signasel/src/
 
 # Compiling 
